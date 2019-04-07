@@ -1,0 +1,16 @@
+galaxy_info:
+  author: LuisesK
+  description: Role to install AWS on Centos 7
+
+  license: MIT
+
+  min_ansible_version: 1.2
+
+  platforms:
+  - name: RHEL7
+      - 7
+
+  galaxy_tags:
+    AWX
+    Ansible
+    Centos

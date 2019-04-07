@@ -1,0 +1,110 @@
+---
+- name: Enable ans start firewalld
+  service:
+    name: firewalld
+    state: started
+    enabled: yes
+
+- name: Enable HTTP over firewalld
+  firewalld:
+    service: http
+    permanent: yes
+    state: enabled
+
+- name: Enable HTTPS over firewalld
+  firewalld:
+    service: https
+    permanent: yes
+    state: enabled
+  notify:
+  - restart firewalld
+
+- name: Install EPEL repository
+  yum_repository:
+    name: epel
+    description: EPEL YUM repo
+    baseurl: http://download.fedoraproject.org/pub/epel/7/x86_64/e/epel-release-7-5.noarch.rpm
+
+- name: Install prerequisite packages
+  yum:
+    name:
+      - nginx
+      - postgresql96-server
+      - rabbitmq-server
+      - wget
+      - memcached
+      - ansible
+    state: present
+
+- name: Install AWX repository
+  yum_repository:
+    name: awx
+    description: awx repo
+    baseurl: https://copr.fedorainfracloud.org/coprs/mrmeee/awx/repo/epel-7/mrmeee-awx-epel-7.repo
+
+- name: Install AWX
+  yum:
+    name: awx
+    state: present
+
+- name: Initialize Postgree default configuratrion
+  shell: /usr/pgsql-9.6/bin/postgresql96-setup initdb
+
+- name: Enable Rabbitmq
+  service:
+    name: rabbitmq-server
+    state: started
+    enabled: yes
+
+- name: Enable PostgreeSQL
+  service:
+    name: postgresql-9.6
+    state: started
+    enabled: yes
+
+- name: Enable Memcached
+  service:
+    name: memcached
+    state: started
+    enabled: yes
+
+- name: Create Postgree user, DB and initialize it
+  shell: |
+    sudo -u postgres createuser -S awx
+    sudo -u postgres createdb -O awx awx
+    sudo -u awx /opt/awx/bin/awx-manage migrate
+  ignore_errors: yes
+
+- name: Initialize AWX configurarion
+  shell: |
+    echo "from django.contrib.auth.models import User; User.objects.create_superuser('admin', 'root@localhost', 'password')" | sudo -u awx /opt/awx/bin/awx-manage shell
+    sudo -u awx /opt/awx/bin/awx-manage create_preload_data
+    sudo -u awx /opt/awx/bin/awx-manage provision_instance --hostname=$(hostname)
+    sudo -u awx /opt/awx/bin/awx-manage register_queue --queuename=tower --hostnames=$(hostname)
+  ignore_errors: yes
+
+- name: Bakcup NGINX default config
+  shell: mv nginx.conf nginx.conf.bkp
+  args:
+    chdir: /etc/nginx/
+
+- name: Template new NGINX conf to host
+  template:
+    src: nginx.conf.j2
+    dest: /etc/nginx/nginx.conf
+    owner: root
+  notify:
+  - restart nginx
+
+- name: Start and enable awx services
+  service:
+    name: "{{ item }}"
+    state: restarted
+    enabled: yes
+  with_items:
+    - awx-cbreceiver
+    - awx-celery-beat
+    - awx-celery-worker
+    - awx-channels-worker
+    - awx-daphne
+    - awx-web
