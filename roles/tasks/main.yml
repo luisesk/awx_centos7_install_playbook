@@ -1,23 +1,16 @@
 ---
-- name: Install epel-release
-  yum:
-    name: epel-release
-
 - name: Install prerequisite packages
   yum:
     name:
       - nginx
+      - epel-release
       - memcached
       - ansible
-      - python-pip
     state: present
-  notify:
-     - restart memcached
-     - restart nginx
+    notify:
+     - enable memcached
+     - enable nginx
 
-- name: Install python module for postgresql
-  pip:
-    name: psycopg2-binary
 
 - name: Setting up PostgresSQL 10 repository
   yum:
@@ -35,13 +28,18 @@
 
 - name: Initializing PosgresSQL
   shell: /usr/pgsql-10/bin/postgresql-10-setup initdb
-  notify: restart postgresql
-
-- name: Create  DB User and Grant access to AWX
-  shell: sudo -u postgres createuser -S awx
+  notify:
+    - restart postgresql
+    - enable postgresql
 
 - name: Create AWX Database
-  shell: sudo -u postgres createdb -O awx awx
+  postgresql_db:
+    name: awx
+
+- name: Create  DB User and Grant access to AWX 
+  postgresql_user:
+    db: awx
+    name: awx
 
 - name: Install Erlang Repo
   yum:
@@ -56,13 +54,15 @@
   yum:
     name: "https://dl.bintray.com/rabbitmq/all/rabbitmq-server/3.7.5/rabbitmq-server-3.7.5-1.el7.noarch.rpm"
     state: present
-  notify: restart rabbitmq
+    notify:
+    - restart rabbitmq
+    - enable rabbitmq
 
 - name: Copy NGINX configuration
   template:
     src: nginx.conf.j2
     dest: /etc/nginx/nginx.conf
-  notify: restart nginx
+    notify: restart nginx
 
 - name: Create AWX Repo 
   template:
@@ -79,12 +79,8 @@
 - name: Create AWX web access User
   shell: echo "from django.contrib.auth.models import User; User.objects.create_superuser('admin', 'root@localhost', 'password')" | sudo -u awx /opt/awx/bin/awx-manage shell
 
-- name: Initialize AWX create_preload_data
-  shell: sudo -u awx /opt/awx/bin/awx-manage create_preload_data
-
-- name: Initialize AWX provision_instance
-  shell: sudo -u awx /opt/awx/bin/awx-manage provision_instance --hostname=$(hostname)
-
-- name: Initialize AWX register_queue
-  shell: sudo -u awx /opt/awx/bin/awx-manage register_queue --queuename=tower --hostnames=$(hostname)
-  notify: start awx services
+- name: Initialize AWX
+  shell: sudo -u awx /opt/awx/bin/awx-manage create_preload_data && sudo -u awx /opt/awx/bin/awx-manage provision_instance --hostname=$(hostname) && sudo -u awx /opt/awx/bin/awx-manage register_queue --queuename=tower --hostnames=$(hostname)
+  notify:
+    - start awx services
+    - enable awx services

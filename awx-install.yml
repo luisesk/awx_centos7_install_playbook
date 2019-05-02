@@ -1,0 +1,5 @@
+---
+- hosts: awx-test
+  become: true
+  roles:
+     - awx_centos7_install 

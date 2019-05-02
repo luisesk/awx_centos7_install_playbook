@@ -3,17 +3,7 @@
   service:
     name: "{{ item }}"
     state: restarted
-  with_items:
-    - awx-cbreceiver
-    - awx-dispatcher
-    - awx-channels-worker
-    - awx-daphne
-    - awx-web
-
-- name: enable awx services
-  service:
-    name: "{{ item }}"
-    state: enabled
+    enabled: yes
   with_items:
     - awx-cbreceiver
     - awx-dispatcher
@@ -25,38 +15,21 @@
   service:
     name: nginx
     state: restarted
-
-- name: enable nginx
-  service:
-    name: nginx
-    state: enabled
+    enabled: yes
 
 - name: restart memcached
   service:
-    name: nginx
+    name: memcached
     state: restarted
-
-- name: enable memcached
-  service:
-    name: nginx
-    state: enabled
 
 - name: restart postgresql
   service:
-    name: nginx
+    name: postgresql-10
     state: restarted
-
-- name: enable postgresql
-  service:
-    name: nginx
-    state: enabled
+    enabled: yes
 
 - name: restart rabbitmq
   service:
-    name: nginx
+    name: rabbitmq
     state: restarted
-
-- name: enable rabbitmq
-  service:
-    name: nginx
-    state: enabled
+    enabled: yes
