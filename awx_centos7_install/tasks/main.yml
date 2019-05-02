@@ -1,110 +1,86 @@
 ---
-- name: Enable ans start firewalld
-  service:
-    name: firewalld
-    state: started
-    enabled: yes
-
-- name: Enable HTTP over firewalld
-  firewalld:
-    service: http
-    permanent: yes
-    state: enabled
-
-- name: Enable HTTPS over firewalld
-  firewalld:
-    service: https
-    permanent: yes
-    state: enabled
-  notify:
-  - restart firewalld
-
-- name: Install EPEL repository
-  yum_repository:
-    name: epel
-    description: EPEL YUM repo
-    baseurl: http://download.fedoraproject.org/pub/epel/7/x86_64/e/epel-release-7-5.noarch.rpm
-
 - name: Install prerequisite packages
   yum:
     name:
       - nginx
-      - postgresql96-server
-      - rabbitmq-server
-      - wget
+      - epel-release
       - memcached
       - ansible
     state: present
+    notify:
+     - enable memcached
+     - enable nginx
 
-- name: Install AWX repository
-  yum_repository:
+
+- name: Setting up PostgresSQL 10 repository
+  yum:
+    name: "https://download.postgresql.org/pub/repos/yum/10/redhat/rhel-7.3-x86_64/pgdg-redhat10-10-2.noarch.rpm"
+    state: present
+
+- name: Installing postgres 10
+  yum:
+    name:
+      - postgresql10
+      - postgresql10-server
+      - postgresql10-contrib
+      - postgresql10-libs
+    state: present
+
+- name: Initializing PosgresSQL
+  shell: /usr/pgsql-10/bin/postgresql-10-setup initdb
+  notify:
+    - restart postgresql
+    - enable postgresql
+
+- name: Create AWX Database
+  postgresql_db:
     name: awx
-    description: awx repo
-    baseurl: https://copr.fedorainfracloud.org/coprs/mrmeee/awx/repo/epel-7/mrmeee-awx-epel-7.repo
+
+- name: Create  DB User and Grant access to AWX 
+  postgresql_user:
+    db: awx
+    name: awx
+
+- name: Install Erlang Repo
+  yum:
+    name: "https://github.com/rabbitmq/erlang-rpm/releases/download/v21.3.7/erlang-21.3.7-1.el7.x86_64.rpm"
+
+- name: Create RabbitMQ Repo 
+  template:
+    src: rabbitmq-erlang.repo.j2
+    dest: /etc/yum.repos.d/rabbitmq-erlang.repo
+
+- name: Install RabbitMQ
+  yum:
+    name: "https://dl.bintray.com/rabbitmq/all/rabbitmq-server/3.7.5/rabbitmq-server-3.7.5-1.el7.noarch.rpm"
+    state: present
+    notify:
+    - restart rabbitmq
+    - enable rabbitmq
+
+- name: Copy NGINX configuration
+  template:
+    src: nginx.conf.j2
+    dest: /etc/nginx/nginx.conf
+    notify: restart nginx
+
+- name: Create AWX Repo 
+  template:
+    src: awx-rpm.j2
+    dest: /etc/yum.repos.d/rawx-rpm.repo
 
 - name: Install AWX
   yum:
     name: awx
-    state: present
 
-- name: Initialize Postgree default configuratrion
-  shell: /usr/pgsql-9.6/bin/postgresql96-setup initdb
+- name: Import AWX Database data
+  shell: sudo -u awx /opt/awx/bin/awx-manage migrate
 
-- name: Enable Rabbitmq
-  service:
-    name: rabbitmq-server
-    state: started
-    enabled: yes
+- name: Create AWX web access User
+  shell: echo "from django.contrib.auth.models import User; User.objects.create_superuser('admin', 'root@localhost', 'password')" | sudo -u awx /opt/awx/bin/awx-manage shell
 
-- name: Enable PostgreeSQL
-  service:
-    name: postgresql-9.6
-    state: started
-    enabled: yes
-
-- name: Enable Memcached
-  service:
-    name: memcached
-    state: started
-    enabled: yes
-
-- name: Create Postgree user, DB and initialize it
-  shell: |
-    sudo -u postgres createuser -S awx
-    sudo -u postgres createdb -O awx awx
-    sudo -u awx /opt/awx/bin/awx-manage migrate
-  ignore_errors: yes
-
-- name: Initialize AWX configurarion
-  shell: |
-    echo "from django.contrib.auth.models import User; User.objects.create_superuser('admin', 'root@localhost', 'password')" | sudo -u awx /opt/awx/bin/awx-manage shell
-    sudo -u awx /opt/awx/bin/awx-manage create_preload_data
-    sudo -u awx /opt/awx/bin/awx-manage provision_instance --hostname=$(hostname)
-    sudo -u awx /opt/awx/bin/awx-manage register_queue --queuename=tower --hostnames=$(hostname)
-  ignore_errors: yes
-
-- name: Bakcup NGINX default config
-  shell: mv nginx.conf nginx.conf.bkp
-  args:
-    chdir: /etc/nginx/
-
-- name: Template new NGINX conf to host
-  template:
-    src: nginx.conf.j2
-    dest: /etc/nginx/nginx.conf
-    owner: root
+- name: Initialize AWX
+  shell: sudo -u awx /opt/awx/bin/awx-manage create_preload_data && sudo -u awx /opt/awx/bin/awx-manage provision_instance --hostname=$(hostname) && sudo -u awx /opt/awx/bin/awx-manage register_queue --queuename=tower --hostnames=$(hostname)
   notify:
-  - restart nginx
-
-- name: Start and enable awx services
-  service:
-    name: "{{ item }}"
-    state: restarted
-    enabled: yes
-  with_items:
-    - awx-cbreceiver
-    - awx-celery-beat
-    - awx-celery-worker
-    - awx-channels-worker
-    - awx-daphne
-    - awx-web
+    - start awx services
+    - enable awx services
