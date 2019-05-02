@@ -9,7 +9,7 @@
     - awx-dispatcher
     - awx-channels-worker
     - awx-daphne
-    - awx-web
+    - awx-web   
 
 - name: restart nginx
   service:
